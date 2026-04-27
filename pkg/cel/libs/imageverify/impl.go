@@ -1,3 +1,19 @@
+/*
+Copyright The Kyverno Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package imageverify
 
 import (
@@ -28,6 +44,8 @@ type ivfuncs struct {
 	attestationList map[string]v1beta1.Attestation
 	cosignVerifier  *cosign.Verifier
 	notaryVerifier  *notary.Verifier
+	// secretLister is used to load kubernetes.io/tls Secrets for mTLS registry auth.
+	secretLister imagedataloader.SecretInterface
 }
 
 func ImageVerifyCELFuncs(
@@ -57,6 +75,7 @@ func ImageVerifyCELFuncs(
 		attestationList: attestationMap(ivpol),
 		cosignVerifier:  cosign.NewVerifier(lister, logger),
 		notaryVerifier:  notary.NewVerifier(logger),
+		secretLister:    lister,
 	}, nil
 }
 
@@ -74,7 +93,10 @@ func (f *ivfuncs) verify_image_signature_string_stringarray(image ref.Val, attes
 			return f.NativeToValue(count)
 		}
 		for _, attestor := range attestors {
-			opts := GetRemoteOptsFromPolicy(f.creds)
+			opts, err := GetRemoteOptsFromPolicy(ctx, f.secretLister, f.creds)
+			if err != nil {
+				return types.NewErr("failed to build registry options: %v", err)
+			}
 			img, err := f.imgCtx.Get(ctx, image, opts...)
 			if err != nil {
 				return types.NewErr("failed to get imagedata: %v", err)
@@ -128,7 +150,10 @@ func (f *ivfuncs) verify_image_attestations_string_string_stringarray(args ...re
 			if !ok {
 				return types.NewErr("attestation not found in policy: %s", attestation)
 			}
-			opts := GetRemoteOptsFromPolicy(f.creds)
+			opts, err := GetRemoteOptsFromPolicy(ctx, f.secretLister, f.creds)
+			if err != nil {
+				return types.NewErr("failed to build registry options: %v", err)
+			}
 			img, err := f.imgCtx.Get(ctx, image, opts...)
 			if err != nil {
 				return types.NewErr("failed to get imagedata: %v", err)
@@ -172,7 +197,10 @@ func (f *ivfuncs) payload_string_string(image ref.Val, attestation ref.Val) ref.
 		if !ok {
 			return types.NewErr("attestation not found in policy: %s", attestation)
 		}
-		opts := GetRemoteOptsFromPolicy(f.creds)
+		opts, err := GetRemoteOptsFromPolicy(ctx, f.secretLister, f.creds)
+		if err != nil {
+			return types.NewErr("failed to build registry options: %v", err)
+		}
 		img, err := f.imgCtx.Get(ctx, image, opts...)
 		if err != nil {
 			return types.NewErr("failed to get imagedata: %v", err)
@@ -190,7 +218,10 @@ func (f *ivfuncs) get_image_data_string(image ref.Val) ref.Val {
 	if image, err := utils.ConvertToNative[string](image); err != nil {
 		return types.WrapErr(err)
 	} else {
-		opts := GetRemoteOptsFromPolicy(f.creds)
+		opts, err := GetRemoteOptsFromPolicy(ctx, f.secretLister, f.creds)
+		if err != nil {
+			return types.NewErr("failed to build registry options: %v", err)
+		}
 		img, err := f.imgCtx.Get(ctx, image, opts...)
 		if err != nil {
 			return types.NewErr("failed to get imagedata: %v", err)

@@ -160,6 +160,7 @@ func (c *compilerImpl) Compile(ivpolicy policiesv1beta1.ImageValidatingPolicyLik
 		creds:                spec.Credentials,
 		exceptions:           compiledExceptions,
 		variables:            variables,
+		secretLister:         c.lister,
 	}, nil
 }
 

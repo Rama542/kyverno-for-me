@@ -52,6 +52,8 @@ type compiledPolicy struct {
 	creds                *policiesv1beta1.Credentials
 	exceptions           []engine.Exception
 	variables            map[string]cel.Program
+	// secretLister is used to load kubernetes.io/tls Secrets for mTLS registry auth.
+	secretLister imagedataloader.SecretInterface
 }
 
 func (c *compiledPolicy) Evaluate(ctx context.Context, ictx imagedataloader.ImageContext, attr admission.Attributes, request interface{}, namespace runtime.Object, isK8s bool, context libs.Context) (*EvaluationResult, error) {
@@ -139,7 +141,11 @@ func (c *compiledPolicy) Evaluate(ctx context.Context, ictx imagedataloader.Imag
 		}
 	}
 
-	if err := ictx.AddImages(ctx, imgList, imageverify.GetRemoteOptsFromPolicy(c.creds)...); err != nil {
+	remoteOpts, err := imageverify.GetRemoteOptsFromPolicy(ctx, c.secretLister, c.creds)
+	if err != nil {
+		return nil, fmt.Errorf("registry mTLS setup failed: %w", err)
+	}
+	if err := ictx.AddImages(ctx, imgList, remoteOpts...); err != nil {
 		return nil, err
 	}
 
