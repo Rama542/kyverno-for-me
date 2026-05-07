@@ -2,6 +2,8 @@ package registryclient
 
 import (
 	"context"
+	"crypto/tls"
+	"fmt"
 	"strings"
 
 	"github.com/google/go-containerregistry/pkg/authn"
@@ -41,4 +43,24 @@ func generateKeychainForPullSecrets(lister corev1listers.SecretLister, defaultNa
 		}
 	}
 	return kauth.NewFromPullSecrets(context.TODO(), secrets)
+}
+
+// loadTLSCertFromSecret retrieves a TLS client certificate and private key from
+// a Kubernetes Secret and returns them as a tls.Certificate ready for use in
+// an mTLS handshake.
+func loadTLSCertFromSecret(lister corev1listers.SecretLister, defaultNamespace, secretRef, certKey, keyKey string) (tls.Certificate, error) {
+	namespace, name := ParseSecretReference(secretRef, defaultNamespace)
+	secret, err := lister.Secrets(namespace).Get(name)
+	if err != nil {
+		return tls.Certificate{}, fmt.Errorf("failed to get mTLS secret %s/%s: %w", namespace, name, err)
+	}
+	certPEM, ok := secret.Data[certKey]
+	if !ok {
+		return tls.Certificate{}, fmt.Errorf("mTLS secret %s/%s is missing certificate key %q", namespace, name, certKey)
+	}
+	keyPEM, ok := secret.Data[keyKey]
+	if !ok {
+		return tls.Certificate{}, fmt.Errorf("mTLS secret %s/%s is missing private key key %q", namespace, name, keyKey)
+	}
+	return tls.X509KeyPair(certPEM, keyPEM)
 }
