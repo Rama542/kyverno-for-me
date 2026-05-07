@@ -58,6 +58,23 @@ func (f *registryClientFactory) GetClient(ctx context.Context, creds *kyvernov1.
 			// Support namespace/name notation with Kyverno namespace as default
 			registryOptions = append(registryOptions, registryclient.WithKeychainPullSecrets(f.secretsLister, config.KyvernoNamespace(), secrets...))
 		}
+		if creds != nil && creds.TLSClientCert != nil && f.secretsLister != nil {
+			certKey := creds.TLSClientCert.CertKey
+			if certKey == "" {
+				certKey = "tls.crt"
+			}
+			keyKey := creds.TLSClientCert.KeyKey
+			if keyKey == "" {
+				keyKey = "tls.key"
+			}
+			registryOptions = append(registryOptions, registryclient.WithMTLSSecret(
+				f.secretsLister,
+				config.KyvernoNamespace(),
+				creds.TLSClientCert.SecretName,
+				certKey,
+				keyKey,
+			))
+		}
 		client, err := registryclient.New(registryOptions...)
 		if err != nil {
 			return nil, err

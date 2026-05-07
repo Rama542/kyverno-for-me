@@ -139,6 +139,27 @@ func WithTracing() Option {
 	}
 }
 
+// WithMTLSSecret configures the registry client to present a TLS client
+// certificate loaded from a Kubernetes Secret during the mTLS handshake.
+// secretRef can be "name" (resolved in defaultNamespace) or "namespace/name".
+// certKey and keyKey are the Secret data keys for the PEM certificate and
+// private key respectively (typically "tls.crt" and "tls.key").
+func WithMTLSSecret(lister corev1listers.SecretLister, defaultNamespace, secretRef, certKey, keyKey string) Option {
+	return func(c *config) error {
+		cert, err := loadTLSCertFromSecret(lister, defaultNamespace, secretRef, certKey, keyKey)
+		if err != nil {
+			return err
+		}
+		cloned := c.transport.Clone()
+		if cloned.TLSClientConfig == nil {
+			cloned.TLSClientConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+		}
+		cloned.TLSClientConfig.Certificates = append(cloned.TLSClientConfig.Certificates, cert)
+		c.transport = cloned
+		return nil
+	}
+}
+
 // Options returns remote.Option config parameters for the client
 func (c *client) Options(ctx context.Context) ([]gcrremote.Option, error) {
 	opts := []gcrremote.Option{
